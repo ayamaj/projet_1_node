@@ -17,16 +17,36 @@ const getAllArticles = (req, res) => {
     res.status(200).json({ total: resultat.length, articles: resultat });
 };
 
-// 2. Récupérer un article par son ID unique
 
-const getArticleById = (req, res) => {
-    const id = Number(req.params.id);
-    const article = articles.find(a => a.id === id);
-    if (!article) {
-        return res.status(404).json({ error: `Article ${id} introuvable` });
+
+
+ // 2. Récupérer un article par son ID unique
+
+const getArticleById = async (req, res) => {
+    try {
+        const article = await Article.findById(req.params.id);
+
+        if (!article) {
+            return res.status(404).json({
+                message: 'Article introuvable'
+            });
+        }
+
+        return res.status(200).json(article);
+
+    } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).json({
+                message: 'Identifiant de ressource invalide (format ObjectId attendu)'
+            });
+        }
+
+        return res.status(500).json({
+            message: err.message
+        });
     }
-    res.status(200).json(article);
 };
+
 
 // 3. Créer un nouvel article
 const createArticle = (req, res) => {
