@@ -1,39 +1,45 @@
-// Données isolées dans le contrôleur (en mémoire pour cette séance)
-let articles = [
-    { id: 1, title: 'Bienvenue sur le blog', author: 'Admin' },
-    { id: 2, title: 'Notre premier serveur créé', author: 'Aya' },
-    { id: 3, title: 'Tester une API avec Postman', author: 'Aya' }
-];
+const Article = require('../models/articleModel');
 
-let prochainId = 4;
+const getAllArticles = async (req, res) => {
+    try {
+        const articles = await Article.find().populate('author', 'name email role');
+        const resultat = req.query.author
+            ? articles.filter(article => article.author?.name === req.query.author)
+            : articles;
 
-// 1. Récupérer tous les articles (avec filtre optionnel ?author=...)
-const getAllArticles = (req, res) => {
-    const { author } = req.query;
-    let resultat = articles;
-    if (author) {
-        resultat = articles.filter(a => a.author === author);
+        return res.status(200).json({
+            total: resultat.length,
+            articles: resultat
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
     }
-    res.status(200).json({ total: resultat.length, articles: resultat });
 };
 
+const getMyArticles = async (req, res) => {
+    try {
+        const articles = await Article.find({ author: req.user._id })
+            .populate('author', 'name email role');
 
-
-
- // 2. Récupérer un article par son ID unique
+        return res.status(200).json({
+            total: articles.length,
+            articles
+        });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
 
 const getArticleById = async (req, res) => {
     try {
-        const article = await Article.findById(req.params.id);
+        const article = await Article.findById(req.params.id)
+            .populate('author', 'name email role');
 
         if (!article) {
-            return res.status(404).json({
-                message: 'Article introuvable'
-            });
+            return res.status(404).json({ message: 'Article introuvable' });
         }
 
         return res.status(200).json(article);
-
     } catch (err) {
         if (err.name === 'CastError') {
             return res.status(400).json({
@@ -41,66 +47,132 @@ const getArticleById = async (req, res) => {
             });
         }
 
-        return res.status(500).json({
-            message: err.message
+        return res.status(500).json({ message: err.message });
+    }
+};
+
+const createArticle = async (req, res) => {
+    try {
+        const { title, content } = req.body || {};
+
+        if (
+            typeof title !== 'string' ||
+            !title.trim() ||
+            typeof content !== 'string' ||
+            !content.trim()
+        ) {
+            return res.status(400).json({
+                message: 'Le titre et le contenu sont obligatoires'
+            });
+        }
+
+        const newArticle = await Article.create({
+            title: title.trim(),
+            content: content.trim(),
+            author: req.user._id
         });
+
+        const populated = await newArticle.populate('author', 'name email role');
+        return res.status(201).json(populated);
+    } catch (err) {
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: err.message });
+        }
+
+        return res.status(500).json({ message: err.message });
     }
 };
 
+const updateArticle = async (req, res) => {
+    try {
+        const article = await Article.findById(req.params.id);
 
-// 3. Créer un nouvel article
-const createArticle = (req, res) => {
-    const { title, author } = req.body;
-    if (!title || !author) {
-        return res.status(400).json({ error: "Le titre et l'auteur sont obligatoires" });
+        if (!article) {
+            return res.status(404).json({ message: 'Article introuvable' });
+        }
+
+        if (
+            article.author.toString() !== req.user._id.toString() &&
+            req.user.role !== 'admin'
+        ) {
+            return res.status(403).json({
+                message: "Action interdite : vous n'êtes pas l'auteur de cet article"
+            });
+        }
+
+        const { title, content } = req.body || {};
+        if (title !== undefined) {
+            if (typeof title !== 'string' || !title.trim()) {
+                return res.status(400).json({ message: 'Le titre ne peut pas être vide' });
+            }
+            article.title = title.trim();
+        }
+
+        if (content !== undefined) {
+            if (typeof content !== 'string' || !content.trim()) {
+                return res.status(400).json({ message: 'Le contenu ne peut pas être vide' });
+            }
+            article.content = content.trim();
+        }
+
+        if (title === undefined && content === undefined) {
+            return res.status(400).json({
+                message: 'Au moins un champ (title ou content) est requis'
+            });
+        }
+
+        const updated = await article.save();
+        const populated = await updated.populate('author', 'name email role');
+        return res.status(200).json(populated);
+    } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).json({ message: 'Identifiant invalide' });
+        }
+
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: err.message });
+        }
+
+        return res.status(500).json({ message: err.message });
     }
-    const nouvelArticle = { id: prochainId++, title, author };
-    articles.push(nouvelArticle);
-    res.status(201).json({ message: 'Article créé', article: nouvelArticle });
 };
 
-// 4. Mettre à jour un article existant (PUT /api/articles/:id)
-const updateArticle = (req, res) => {
-    const id = Number(req.params.id);
-    const { title, author } = req.body;
+const deleteArticle = async (req, res) => {
+    try {
+        const article = await Article.findById(req.params.id);
 
-    // On recherche l'index de l'article dans le tableau
-    const index = articles.findIndex(a => a.id === id);
+        if (!article) {
+            return res.status(404).json({ message: 'Article introuvable' });
+        }
 
-    if (index === -1) {
-        return res.status(404).json({ error: `Article ${id} introuvable` });
+        if (
+            article.author.toString() !== req.user._id.toString() &&
+            req.user.role !== 'admin'
+        ) {
+            return res.status(403).json({
+                message: "Action interdite : vous n'êtes pas l'auteur de cet article"
+            });
+        }
+
+        await Article.findByIdAndDelete(req.params.id);
+        return res.status(200).json({
+            message: 'Article supprimé avec succès',
+            id: req.params.id
+        });
+    } catch (err) {
+        if (err.name === 'CastError') {
+            return res.status(400).json({ message: 'Identifiant invalide' });
+        }
+
+        return res.status(500).json({ message: err.message });
     }
-
-    // Mise à jour partielle ou totale
-    if (title) articles[index].title = title;
-    if (author) articles[index].author = author;
-
-    res.status(200).json({ message: 'Article mis à jour', article: articles[index] });
 };
 
-
-// 5. Supprimer un article (DELETE /api/articles/:id)
-const deleteArticle = (req, res) => {
-    const id = Number(req.params.id);
-    const articleExiste = articles.some(a => a.id === id);
-
-    if (!articleExiste) {
-        return res.status(404).json({ error: `Impossible de supprimer : article ${id} introuvable` });
-    }
-
-    // On filtre pour ne garder que les articles ayant un ID différent
-    articles = articles.filter(a => a.id !== id);
-
-    res.status(200).json({ message: `Article ${id} supprimé avec succès` });
-};
-
-
-// Exportation CommonJS : on rend ces fonctions publiques
 module.exports = {
     getAllArticles,
+    getMyArticles,
     getArticleById,
     createArticle,
     updateArticle,
-    deleteArticle,
-
+    deleteArticle
 };
