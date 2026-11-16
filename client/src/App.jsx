@@ -1,35 +1,39 @@
-import { useState } from 'react';
+import { useTheme } from './context/ThemeContext';
 
-import Header from './components/Header';
-import Counter from './components/Counter';
-import AutoTimer from './components/AutoTimer';
-
-import './index.css';
+import Navbar from './components/Navbar';
+import ProductList from './components/ProductList';
+import Cart from './components/Cart';
+import NotificationToast from './components/NotificationToast';
 
 export default function App() {
 
-  const [showTimer, setShowTimer] = useState(true);
+  const { theme } = useTheme();
 
   return (
-    <div className="app-container">
+    <div className={`app ${theme}`}>
 
-      <Header
-        titre="Mon Super Compteur React"
-        sousTitre="Maitrise des Hooks fondamentaux useState et useEffect"
-      />
+      <Navbar />
 
-      <Counter />
+      <main className="container">
 
-      <button
-        className="btn btn-reset"
-        onClick={() => setShowTimer(!showTimer)}
-      >
-        {showTimer
-          ? 'Masquer le Chronometre'
-          : 'Afficher le Chronometre'}
-      </button>
+        <h1>Bienvenue chez TechStore</h1>
 
-      {showTimer && <AutoTimer />}
+        <div className="content-grid">
+
+          <section>
+            <h2>Catalogue des produits</h2>
+            <ProductList />
+          </section>
+
+          <section>
+            <Cart />
+          </section>
+
+        </div>
+
+      </main>
+
+      <NotificationToast />
 
     </div>
   );
